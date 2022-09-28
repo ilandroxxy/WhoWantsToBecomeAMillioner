@@ -1,6 +1,7 @@
 import random
 import telebot
 from telebot import types
+import time
 
 bot = telebot.TeleBot('5447726623:AAG_EYLjLIFqOz80fZHhZcBiMrVlylUdJcI')
 # real 5447726623:AAG_EYLjLIFqOz80fZHhZcBiMrVlylUdJcI
@@ -329,4 +330,10 @@ def mess(message):
         bot.send_message(message.chat.id, f'Вы проиграли:(\nВаш выигрыш: {GIFT[len(QUE)]} рублей', reply_markup=markup)
     # que3 ----------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-bot.polling(none_stop=True)
+if __name__ == '__main__':
+    while True:
+        try:
+            bot.polling(none_stop=True)
+        except Exception as e:
+            time.sleep(3)
+            print(e)
