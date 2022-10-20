@@ -11,6 +11,7 @@ def step(call):
     markup = telebot.types.InlineKeyboardMarkup(row_width=1)
 
     if call.data == 'КлючСобытия':
+        pass
 
 @bot.message_handler(commands=['start'])
 def start(message):
@@ -40,5 +41,6 @@ def mess(message):
     get_message_bot = message.text.strip()
 
     if get_message_bot == "Репетитор":
+        pass
 
 bot.polling(none_stop=True)
