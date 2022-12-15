@@ -2,6 +2,7 @@ import random
 import telebot
 from telebot import types
 import time
+import sqlite3
 
 bot = telebot.TeleBot('5447726623:AAG_EYLjLIFqOz80fZHhZcBiMrVlylUdJcI')
 
@@ -184,7 +185,7 @@ def start(message):
     bot.send_message(message.chat.id, 'Добро пожаловать в игру\n *"Кто хочет стать миллионером"!*', parse_mode='Markdown', reply_markup=markup)
 
 
-# region Команды: show_list, show
+# region Команды: show_list, show, wallet
 @bot.message_handler(commands=['show_list'])
 def show_list(message):
     if message.chat.id == 811476623 or message.chat.id == 1891281816:
@@ -202,7 +203,44 @@ def show_list(message):
 @bot.message_handler(commands=['show'])
 def show(message):
     bot.send_message(message.chat.id, f'*Промежуточные результаты:*\nКоличество правильных ответов: {len(Users[message.chat.id][0])-1}\nКоличество оставшихся вопросов: {16-len(Users[message.chat.id][0])}', parse_mode='Markdown')
-# endregion Команды: show_list, show
+
+
+@bot.message_handler(commands=['wallet'])
+def wallet(message):
+    con = sqlite3.connect('sqlite.db')
+    cur = con.cursor()
+    cur.execute(f"SELECT * FROM players WHERE id = {message.chat.id}")
+    records = cur.fetchone()
+    Users[message.chat.id][1] = records[3]
+    bot.send_message(message.chat.id, f"Денег в вашем кошельке: {Users[message.chat.id][1]}")
+
+
+@bot.message_handler(commands=['rating'])
+def rating(message):
+    con = sqlite3.connect('sqlite.db')
+    cur = con.cursor()
+    cur.execute(''' SELECT name, username, balance
+                    FROM players
+                    -- ASC сортировать по убыванию, DESC сортировать по возрастанию
+                    ORDER BY balance DESC
+                    LIMIT 10;
+                ''')
+
+    # todo: дописать команду, рейтинг должен быть оформлен и выведен пользователям в бота
+    for result in cur:
+        print(result)
+
+@bot.message_handler(commands=['stat'])
+def stat(message):
+    if message.chat.id in (1891281816, 811476623):
+        # todo: Дописать приватную команду для вывода статистики о пользователях (отправляет db файл)
+        bot.send_message(message.chat.id, "Привет, разработчикам!")
+    else:
+        bot.send_message(message.chat.id, "Извините, это команда приватная, у Вас нет доступа.")
+
+# todo: ДЗ попробовать сделать свою приватную команду, выводящую данные пользователя по его имени или username
+
+# endregion Команды: show_list, show, wallet
 
 @bot.message_handler(content_types=['text'])
 def mess(message):
@@ -221,6 +259,11 @@ def mess(message):
 
 
     elif get_message_bot == 'Заглянуть в кошелёк':
+        con = sqlite3.connect('sqlite.db')
+        cur = con.cursor()
+        cur.execute(f"SELECT * FROM players WHERE id = {message.chat.id}")
+        records = cur.fetchone()
+        Users[message.chat.id][1] = records[3]
         bot.send_message(message.chat.id, f"Денег в вашем кошельке: {Users[message.chat.id][1]}")
 
 
@@ -230,7 +273,36 @@ def mess(message):
             balance = GIFT[len(Users[message.chat.id][0])]
         else:
             balance = GIFT[len(Users[message.chat.id][0])-1]
-        Users[message.chat.id][1] += balance
+
+        con = sqlite3.connect('sqlite.db')
+        cur = con.cursor()
+
+        cur.execute('''
+        CREATE TABLE IF NOT EXISTS players(
+            id INTEGER,
+            name TEXT,
+            username TEXT,
+            balance INTEGER
+        );
+        ''')
+
+        cur.execute(f"SELECT * FROM players WHERE id = {message.chat.id}")
+        records = cur.fetchone()
+
+        if records is None:
+            cur.execute('INSERT INTO players VALUES(?, ?, ?, ?);', (message.chat.id, message.from_user.first_name, message.from_user.username, balance))
+            con.commit()
+        else:
+            wallet = records[3] + balance
+            cur.execute(f"DELETE FROM players WHERE id = {message.chat.id}")
+            cur.execute('INSERT INTO players VALUES(?, ?, ?, ?);', (message.chat.id, message.from_user.first_name, message.from_user.username, wallet))
+            con.commit()
+
+
+
+        con.close()
+
+        Users[message.chat.id][1] = wallet
         Users[message.chat.id][0].clear()
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1, one_time_keyboard=True)
         markup.add(types.KeyboardButton("Начать заново"))
@@ -258,133 +330,17 @@ def mess(message):
         markup3 = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1, one_time_keyboard=True)
         markup3.add(types.KeyboardButton("Заглянуть в кошелёк"), types.KeyboardButton("Забрать выигрыш"))
         bot.send_message(message.chat.id, f'Ваш выигрыш: {balance} рублей', reply_markup=markup3)
+    # endregion Обработка правильных и неправильных ответов que1-que15
 
+
+    # todo: ДЗ доделать кортеж неправильных значений (снизу) по аналогии как сверху. Убрать лишнии комментарии.
     # que1 ----------------------------------------------------------------------------------------------------------------------------------------------------------------
-    elif get_message_bot == 'Юнг':
+    elif get_message_bot in ('Юнг', 'Гегель', 'Шопенгауэр', 'Один', 'Четыре', 'Три', 'Романист', 'Драматург', 'Эссеист', 'Н', 'О', 'П', 'Карамзин', 'Державин', 'Фонвизин', 'Гафний', 'Бериллий'):
         Users[message.chat.id][0] = []
         l = len(Users[message.chat.id][0])
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1, one_time_keyboard=True)
         markup.add(types.KeyboardButton("Начать заново"))   # Генерим кнопку для перезапуска игры
         bot.send_message(message.chat.id, f'Вы проиграли:(\nВаш выигрыш: {GIFT[l]} рублей', reply_markup=markup)  # А тут просто в одну строку выводи кол-во денег: Список[кол-во ответов]
-
-    elif get_message_bot == 'Гегель':
-        Users[message.chat.id][0] = []
-        l = len(Users[message.chat.id][0])
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1, one_time_keyboard=True)
-        markup.add(types.KeyboardButton("Начать заново"))
-        bot.send_message(message.chat.id, f'Вы проиграли:(\nВаш выигрыш: {GIFT[l]} рублей', reply_markup=markup)
-
-    elif get_message_bot == 'Шопенгауэр':
-        Users[message.chat.id][0] = []
-        l = len(Users[message.chat.id][0])
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1, one_time_keyboard=True)
-        markup.add(types.KeyboardButton("Начать заново"))
-        bot.send_message(message.chat.id, f'Вы проиграли:(\nВаш выигрыш: {GIFT[l]} рублей', reply_markup=markup)
-    # que1 ----------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-    # que2 ----------------------------------------------------------------------------------------------------------------------------------------------------------------
-    elif get_message_bot == 'Один':
-        Users[message.chat.id][0] = []
-        l = len(Users[message.chat.id][0])
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1, one_time_keyboard=True)
-        markup.add(types.KeyboardButton("Начать заново"))
-        bot.send_message(message.chat.id, f'Вы проиграли:(\nВаш выигрыш: {GIFT[l]} рублей', reply_markup=markup)
-
-    elif get_message_bot == 'Четыре':
-        Users[message.chat.id][0] = []
-        l = len(Users[message.chat.id][0])
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1, one_time_keyboard=True)
-        markup.add(types.KeyboardButton("Начать заново"))
-        bot.send_message(message.chat.id, f'Вы проиграли:(\nВаш выигрыш: {GIFT[l]} рублей', reply_markup=markup)
-
-    elif get_message_bot == 'Три':
-        Users[message.chat.id][0] = []
-        l = len(Users[message.chat.id][0])
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1, one_time_keyboard=True)
-        markup.add(types.KeyboardButton("Начать заново"))
-        bot.send_message(message.chat.id, f'Вы проиграли:(\nВаш выигрыш: {GIFT[l]} рублей', reply_markup=markup)
-    # que2 ----------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-
-    # que3 ----------------------------------------------------------------------------------------------------------------------------------------------------------------
-    elif get_message_bot == 'Романист':
-        Users[message.chat.id][0] = []
-        l = len(Users[message.chat.id][0])
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1, one_time_keyboard=True)
-        markup.add(types.KeyboardButton("Начать заново"))
-        bot.send_message(message.chat.id, f'Вы проиграли:(\nВаш выигрыш: {GIFT[l]} рублей', reply_markup=markup)
-
-    elif get_message_bot == 'Драматург':
-        Users[message.chat.id][0] = []
-        l = len(Users[message.chat.id][0])
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1, one_time_keyboard=True)
-        markup.add(types.KeyboardButton("Начать заново"))
-        bot.send_message(message.chat.id, f'Вы проиграли:(\nВаш выигрыш: {GIFT[l]} рублей', reply_markup=markup)
-
-    elif get_message_bot == 'Эссеист':
-        Users[message.chat.id][0] = []
-        l = len(Users[message.chat.id][0])
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1, one_time_keyboard=True)
-        markup.add(types.KeyboardButton("Начать заново"))
-        bot.send_message(message.chat.id, f'Вы проиграли:(\nВаш выигрыш: {GIFT[l]} рублей', reply_markup=markup)
-    # que3 -------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-
-    # que4 -------------------------------------------------------------------------------------------------------------------------------------------------------------
-    elif get_message_bot == 'Н':
-        Users[message.chat.id][0] = []
-        l = len(Users[message.chat.id][0])
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1, one_time_keyboard=True)
-        markup.add(types.KeyboardButton("Начать заново"))
-        bot.send_message(message.chat.id, f'Вы проиграли:(\nВаш выигрыш: {GIFT[l]} рублей', reply_markup=markup)
-
-    elif get_message_bot == 'О':
-        Users[message.chat.id][0] = []
-        l = len(Users[message.chat.id][0])
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1, one_time_keyboard=True)
-        markup.add(types.KeyboardButton("Начать заново"))
-        bot.send_message(message.chat.id, f'Вы проиграли:(\nВаш выигрыш: {GIFT[l]} рублей', reply_markup=markup)
-
-    elif get_message_bot == 'П':
-        Users[message.chat.id][0] = []
-        l = len(Users[message.chat.id][0])
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1, one_time_keyboard=True)
-        markup.add(types.KeyboardButton("Начать заново"))
-        bot.send_message(message.chat.id, f'Вы проиграли:(\nВаш выигрыш: {GIFT[l]} рублей', reply_markup=markup)
-    # que4 -------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-
-    # que5 -------------------------------------------------------------------------------------------------------------------------------------------------------------
-    elif get_message_bot == 'Карамзин':
-        Users[message.chat.id][0] = []
-        l = len(Users[message.chat.id][0])
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1, one_time_keyboard=True)
-        markup.add(types.KeyboardButton("Начать заново"))
-        bot.send_message(message.chat.id, f'Вы проиграли:(\nВаш выигрыш: {GIFT[l]} рублей', reply_markup=markup)
-
-    elif get_message_bot == 'Державин':
-        Users[message.chat.id][0] = []
-        l = len(Users[message.chat.id][0])
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1, one_time_keyboard=True)
-        markup.add(types.KeyboardButton("Начать заново"))
-        bot.send_message(message.chat.id, f'Вы проиграли:(\nВаш выигрыш: {GIFT[l]} рублей', reply_markup=markup)
-
-    elif get_message_bot == 'Фонвизин':
-        Users[message.chat.id][0] = []
-        l = len(Users[message.chat.id][0])
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1, one_time_keyboard=True)
-        markup.add(types.KeyboardButton("Начать заново"))
-        bot.send_message(message.chat.id, f'Вы проиграли:(\nВаш выигрыш: {GIFT[l]} рублей', reply_markup=markup)
-    # que5 -------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-
-    # que6 -------------------------------------------------------------------------------------------------------------------------------------------------------------
-    elif get_message_bot == 'Гафний':
-        Users[message.chat.id][0] = []
-        l = len(Users[message.chat.id][0])
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1, one_time_keyboard=True)
-        markup.add(types.KeyboardButton("Начать заново"))
-        bot.send_message(message.chat.id, f'Вы проиграли:(\nВаш выигрыш: {GIFT[l]} рублей', reply_markup=markup)
 
     elif get_message_bot == 'Бериллий':
         Users[message.chat.id][0] = []
